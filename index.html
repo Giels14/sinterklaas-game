@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Sint & Piet: Het Grote Avontuur</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; background-color: #2c3e50; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Arial', sans-serif; overflow: hidden; }
+        canvas { border: 8px solid #d4af37; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body>
+
+<script>
+
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    backgroundColor: '#5D4037',
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 700 },
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+const game = new Phaser.Game(config);
+
+let player, cursors, platforms, piet, puzzelStukjes;
+let score = 0;
+let level = 1;
+let stukjesNodig = 0;
+let scoreText, levelText, winContainer;
+
+function preload() {
+    // Omdat je op GitHub zit, kunnen we de plaatjes 'normaal' laden!
+    // Zorg dat je mapje 'assets' heet en de bestanden de juiste namen hebben.
+    this.load.image('sint', 'assets/sint.png');
+    this.load.image('piet', 'assets/piet.png');
+    this.load.image('puzzel', 'assets/puzzel.png');
+    this.load.image('bg', 'assets/bg.png');
+    this.load.image('reward', 'assets/reward.png');
+}
+
+function create() {
+    // 1. Achtergrond
+    this.add.tileSprite(400, 300, 800, 600, 'bg').setAlpha(0.4).setScale(1);
+
+    // 2. Platforms
+    platforms = this.physics.add.staticGroup();
+    let floor = this.add.rectangle(400, 590, 800, 40, 0x8B4513);
+    platforms.add(this.physics.add.existing(floor, true));
+    
+    // Willekeurige platforms
+    platforms.add(this.physics.add.existing(this.add.rectangle(200, 400, 150, 20, 0x27ae60), true));
+    platforms.add(this.physics.add.existing(this.add.rectangle(600, 300, 150, 20, 0xc0392b), true));
+
+    // 3. Speler
+    player = this.physics.add.sprite(100, 500, 'sint');
+    player.setCollideWorldBounds(true);
+    player.setBounce(0.1);
+    
+    // Als je plaatjes te groot zijn, kun je ze hier verkleinen:
+    // player.setScale(0.5); 
+
+    // 4. Piet
+    piet = this.physics.add.sprite(50, 80, 'piet');
+    piet.body.allowGravity = false;
+    piet.body.setImmovable(true);
+    
+    this.tweens.add({
+        targets: piet,
+        x: 750,
+        duration: 2500,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1
+    });
+
+    // 5. Items
+    puzzelStukjes = this.physics.add.group();
+    
+    this.time.addEvent({
+        delay: 1500,
+        callback: dropItem,
+        callbackScope: this,
+        loop: true
+    });
+
+    // 6. Colliders
+    this.physics.add.collider(player, platforms);
+    this.physics.add.collider(puzzelStukjes, platforms);
+    this.physics.add.overlap(player, puzzelStukjes, collectItem, null, this);
+
+    // 7. UI
+    scoreText = this.add.text(25, 20, 'Stukjes: 0', { fontSize: '28px', color: '#ffffff' });
+    levelText = this.add.text(25, 55, 'Level: 1', { fontSize: '20px', color: '#f1c40f' });
+
+    // Win Scherm
+    winContainer = this.add.container(400, 300);
+    let winBg = this.add.rectangle(0, 0, 600, 400, 0xFFFFFF);
+    winBg.setStrokeStyle(4, 0xd4af37);
+    let rewardImg = this.add.image(0, -20, 'reward').setScale(1); // Pas schaal aan indien nodig
+    let winLbl = this.add.text(0, 150, 'PUZZEL COMPLEET!', { fontSize: '32px', color: '#d35400', fontStyle: 'bold' }).setOrigin(0.5);
+    let clickLbl = this.add.text(0, 185, '(Klik voor volgend level)', { fontSize: '20px', color: '#333' }).setOrigin(0.5);
+    
+    winContainer.add([winBg, rewardImg, winLbl, clickLbl]);
+    winContainer.setVisible(false);
+    winContainer.setDepth(100);
+
+    // Input
+    cursors = this.input.keyboard.createCursorKeys();
+    this.input.on('pointerdown', handleInput);
+
+    startLevel(1);
+}
+
+function update() {
+    if (winContainer.visible) return;
+
+    if (cursors.left.isDown) {
+        player.setVelocityX(-300);
+        player.setFlipX(true);
+    } else if (cursors.right.isDown) {
+        player.setVelocityX(300);
+        player.setFlipX(false);
+    } else {
+        player.setVelocityX(0);
+    }
+
+    if (cursors.space.isDown && player.body.touching.down) {
+        player.setVelocityY(-550);
+    }
+}
+
+function handleInput() {
+    if (winContainer.visible) {
+        nextLevel();
+    } else if (player.body.touching.down) {
+        player.setVelocityY(-550);
+    }
+}
+
+function dropItem() {
+    if (winContainer.visible) return;
+    let item = puzzelStukjes.create(piet.x, piet.y + 20, 'puzzel');
+    item.setBounceY(0.6);
+    item.setCollideWorldBounds(true);
+    item.setVelocityX(Phaser.Math.Between(-50, 50));
+}
+
+function collectItem(player, item) {
+    item.destroy();
+    score++;
+    scoreText.setText('Stukjes: ' + score + ' / ' + stukjesNodig);
+    
+    // Juice effect
+    this.tweens.add({
+        targets: player,
+        scaleX: player.scaleX * 1.2,
+        scaleY: player.scaleY * 0.8,
+        duration: 100,
+        yoyo: true
+    });
+
+    if (score >= stukjesNodig) winLevel();
+}
+
+function startLevel(lvl) {
+    level = lvl;
+    score = 0;
+    stukjesNodig = 2 * (level + 1);
+    levelText.setText('Level: ' + level);
+    scoreText.setText('Stukjes: 0 / ' + stukjesNodig);
+    winContainer.setVisible(false);
+    this.physics.resume();
+}
+
+function winLevel() {
+    this.physics.pause();
+    winContainer.setVisible(true);
+    winContainer.setScale(0);
+    this.tweens.add({
+        targets: winContainer,
+        scale: 1,
+        duration: 500,
+        ease: 'Back.out'
+    });
+}
+
+function nextLevel() {
+    puzzelStukjes.clear(true, true);
+    startLevel(level + 1);
+}
+
+</script>
+</body>
+</html>
